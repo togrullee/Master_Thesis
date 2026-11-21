@@ -1,3 +1,11 @@
 __pycache__/
 *.pyc
 venv/
+
+# ArUco cube tool
+aruco_cubes_tool/.venv/
+point_cloud_code/output/aruco_selftest/
+point_cloud_code/output/aruco/aruco_view*.png
+point_cloud_code/output/aruco/scene_cloud.ply
+point_cloud_code/output/aruco_real/
+scans/a[0-9]*.npz

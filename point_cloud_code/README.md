@@ -295,3 +295,69 @@ After merging: voxel downsample → **RANSAC plane** (`segment_plane`, `plane.*`
 4. Never overwrite `scans/*.npz` or `poses.json` by hand; the scripts already keep backups.
 5. After each step compare the printout with the "check the printout" items above and report numbers (reprojection RMSE, fitness before/after, cluster sizes, box size), not just "it worked".
 6. Meshcat can only be inspected by the human in a browser; ask them to confirm the board triad's blue axis points up and that the three camera spheres are above the board.
+
+---
+
+## ArUco cube mode (2 cubes instead of the chessboard)
+
+`gather_cloud_aruco.py` replaces `calibrate_poses.py` + `fuse_and_segment.py` when the world reference is the printed
+ArUco cubes from `aruco_cubes_tool/`. By default it finds which layout cubes are in the images (IDs 6k..6k+5 belong to
+cube k); the first one (lowest id, or the first in `--cubes 1 2`) is the world frame, the others are calibrated against it. Capture still happens on
+Windows with `capture_view.py`; everything else runs in WSL.
+
+```bash
+# 1. capture N views (any number, 4-8 is good) with the object between the cubes, camera 0.3-0.6 m away
+python capture_view.py a1 ; python capture_view.py a2 ; ...        # Windows, C:\rsenv
+# 2. WSL
+python gather_cloud_aruco.py --views ../scans/a1.npz ../scans/a2.npz ../scans/a3.npz ../scans/a4.npz
+python gather_cloud_aruco.py --views ... --target 0.15 0.0 0.03     # if the object is not between the cubes
+python gather_cloud_aruco.py --views ... --recalibrate              # after moving a cube
+python gather_cloud_aruco.py --views ... --roi -0.7 0.7 -0.7 0.7 0.012 0.4 --plane-threshold 0.02   # carpet: rough floor (roi in the table frame)
+```
+
+To look at the result in Meshcat: `python view_aruco_result.py` (or `--dir output/aruco_real`), then open the printed link
+(usually http://localhost:7000) in the Windows browser. Shows only the object, the cubes (boxes with frames) and the cameras (coloured spheres with frames),
+z up; add `--show-scene` to also see the floor and clutter.
+
+Rules for the views: every marker needs about 6 px per module in the image (640x480: stay within about 0.6 m), and
+**at least one view must show two faces of each cube** so that cube 1 can be placed relative to cube 0. A view needs
+>= 2 markers; a single small marker gives an ambiguous (possibly flipped) pose and is rejected.
+
+The cube-to-cube pose is a bundle adjustment over all views that show markers of several cubes (initialised from a view
+with >= 2 markers on each cube), and the script prints how much it moved and a leave-one-view-out spread. Treat a spread of
+several mm as a warning that more / closer / lower views are needed.
+
+What is remembered (in `output/aruco/`):
+* `aruco_poses.json`: per view `T_world_cam` and `T_cube_cam` for every cube (the camera pose w.r.t. the markers),
+  reprojection error, markers used; per cube `T_world_cube` with how it was obtained.
+* `cube_layout_calibrated.yaml`: the cube layout with cube 1's pose filled in. The next run reuses it automatically
+  (a single view is then enough) and reports how far the cubes moved if they did (> 5 mm / 2 deg gives a warning).
+
+Outputs: `scene_cloud.ply` (all views, cubes cut out), `object_cloud.ply` (table removed by RANSAC, DBSCAN cluster
+nearest to the midpoint of the cubes or `--target`), `aruco_<view>.png` (detections and cube axes). `scene_cloud.ply` and
+`object_cloud.ply` are written in a **floor frame** defined by the cubes: +z points from the visible marker faces towards the
+camera (the top face of each cube is the face with a detected marker that faces the cameras; their normals are averaged),
+z = 0 is the floor, one cube side below those top faces, origin below the world cube. So a cube's top face is at z = 60 mm
+and an object's z is its height above the floor (carpet and all). `--floor-from plane` uses the RANSAC plane of the point
+cloud instead. `--roi` and `--target` are given in this frame (z = height above the floor). `--flip-z` writes everything with z inverted (a 180 deg rotation about x, not a mirror;
+the table stays z = 0, things above it get negative z); `--roi` / `--target` are unaffected. `aruco_poses.json` keeps the camera / cube poses in the world-cube frame
+(`T_world_cam`) and in the table frame (`T_table_cam`, `T_table_cube`, `table_frame.T_table_world`). Cloud, plane and DBSCAN
+parameters come from `config.yaml`.
+
+`python selftest_aruco.py` (synthetic scenes with ground truth, about 20 s once the views are rendered, 2 min the first
+time): cube 1 pose 0.21 mm / 0.03 deg, camera poses worst 0.61 mm / 0.12 deg, object cloud median 0.3 mm from the true
+surface, stored-layout reuse, moved-cube detection and the failure modes all pass.
+
+First real data (2026-11-21, 10 views, egg carton on carpet, cubes 1 and 2, 0.6-0.96 m, mostly top-down, markers only
+20-47 px wide): 9/10 views got a pose (reprojection RMSE 0.2-1.5 px; one view showed a single marker and was rejected);
+cube 2 relative to cube 1: the closed-form estimate from the only view with 2 markers per cube was **29 mm / 4.8 deg off**
+compared with the bundle adjustment, which has a leave-one-out spread of 6 mm / 1.2 deg; the two cubes come out at the same
+height (2 mm) and 2.6 deg relative tilt, as two cubes on one floor should; views agree to about 5 mm RMS; the object
+cluster (plane threshold 0.02 m) is 5.4 x 12.0 x 31 cm, not yet compared with a ruler. The default 4 mm plane threshold
+of config.yaml fails on carpet (the floor merges into one cluster). So: usable for a rough object cloud, **not** mm
+accurate. Better data: closer (< 0.6 m), 40-50 deg above the floor so top and side faces of both cubes are visible together,
+more views with both cubes in them, or larger cubes/markers.
+
+**Not verified:** accuracy against a ruler on real data, the L515 depth bias between views (no ICP refinement is done
+here), and the colour-camera lens distortion (the L515 reports k1=0.146, k2=-0.475, k3=0.416, used for the marker poses
+but ignored when back-projecting depth, as in the older scripts).
