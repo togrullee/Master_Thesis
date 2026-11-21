@@ -1,0 +1,63 @@
+# All tunable parameters for the multi-view point cloud pipeline live in this file.
+# Relative paths are resolved from the folder that contains this file.
+# Units: metres unless a key says otherwise. World frame = chessboard frame (see README).
+
+paths:
+  scans_dir: ../scans          # where view*.npz files are copied from Windows
+  poses_file: poses.json       # written by calibrate_poses.py, read by fuse_and_segment.py
+  output_dir: output           # fused.ply, target_cluster.ply, debug images
+
+board:                         # !!! CHECK THESE AGAINST YOUR PRINTED BOARD !!!
+  cols: 7                      # inner corners along the pattern's long side (use odd x even)
+  rows: 6                      # inner corners along the pattern's short side
+  square_size_mm: 25.0         # edge length of one printed square, measured with a ruler
+  refine_with_depth: false     # true = also align the board plane to the depth data (see README)
+
+cloud:
+  max_depth: 1.5               # drop depth readings beyond this (m)
+  min_depth: 0.1               # drop depth readings closer than this (m)
+  voxel: 0.003                 # voxel downsample size (m)
+  sor_neighbors: 30            # statistical outlier removal: neighbours
+  sor_std_ratio: 2.0           # statistical outlier removal: std-dev multiplier
+
+roi:                           # crop box in WORLD (board) coordinates, applied to every view
+  enabled: true
+  x: [-0.30, 0.70]
+  y: [-0.50, 0.45]
+  z: [-0.05, 0.40]             # z = 0 is the board surface, +z is up; keep the lower bound BELOW 0 by
+                               # more than your pose error, or the table (needed for plane alignment) is cropped away
+
+icp:
+  enabled: true
+  plane_align: true            # 1) snap table planes together 2) ICP on above-table points 3) snap again
+                               #   (false = plain ICP on the whole cloud; the table then dominates and can mislead it)
+  min_points: 500              # fewer above-table points than this -> only the planes are aligned
+  voxels: [0.010, 0.005, 0.003]   # coarse-to-fine voxel schedule (m)
+  max_iterations: [50, 40, 30]    # ICP iterations per voxel level
+  max_dist_factor: 2.5         # max correspondence distance = voxel * factor
+  eval_distance: 0.010         # distance used for the before/after fitness + RMSE report
+  min_fitness_gain: 0.05       # ICP/FGR replaces the calibration only if fitness rises by this much
+                               #   (or RMSE drops >=15%); smaller gains are noise-fitting on partial overlap
+  fgr_fallback: true           # try Fast Global Registration if ICP ends with low fitness
+  fgr_trigger_fitness: 0.5     # ICP fitness below this triggers the fallback
+  fgr_voxel: 0.006
+
+plane:                         # RANSAC table-plane removal on the merged cloud
+  distance_threshold: 0.004
+  ransac_n: 3
+  iterations: 2000
+
+dbscan:
+  eps: 0.015
+  min_points: 30
+
+target:
+  mode: nearest                # largest | nearest   (largest picked the laptop; the drill is not the biggest thing in view)
+  point: [0.135, -0.105, 0.15] # world point (board coordinates, m) near the drill, used when mode = nearest
+  outlier_neighbors: 30        # outlier removal on the chosen cluster (a few stray points would
+  outlier_std_ratio: 2.0       #   otherwise stretch the bounding box)
+
+viz:
+  enabled: true
+  meshcat_port: null           # null = Drake picks 7000 (or next free); set e.g. 7001 to pin it
+  point_size: 0.003
