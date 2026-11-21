@@ -1,12 +1,19 @@
 # Master_Thesis
 
-Master thesis on **robotic unscrewing of e-waste** (simulation in Drake). This repo currently holds the
-**perception part**: building one clean 3D point cloud of an object (a drill) from three views of a single
-Intel RealSense L515, using classic geometry only (numpy, Open3D, OpenCV; no learning-based methods).
+Master thesis on **robotic unscrewing of e-waste** (simulation in Drake). The repo has two parts:
 
-Owner of this part: Toghrul. Hand-off reader: Emre (and his AI assistant). This file is the status/tracking
-document. Update the **Work log** and **Status** sections whenever something changes, and keep claims tied to
-numbers or files.
+| Folder | Part | Owner |
+|---|---|---|
+| `point_cloud_code/`, `scans/` | **Perception**: one clean 3D point cloud of an object (a drill) from three views of a single Intel RealSense L515, classic geometry only (numpy, Open3D, OpenCV; no learning-based methods) | Toghrul |
+| `diana7_drake/` | **Robot model and control in Drake**: Diana 7 arm (URDF + meshes) and first simulation scripts | Emre |
+
+`diana7_drake/` was imported from https://github.com/chocolatecherry-hub/diana7-drake (branch `main`, state of
+2026-11-12) with `git subtree`, so Emre's commits and authorship are kept in the history. His own repo is the
+original; if he keeps working there, pull his changes with
+`git subtree pull --prefix=diana7_drake git@github.com:chocolatecherry-hub/diana7-drake.git main`.
+
+This file is the status/tracking document for both people and their AI assistants. Update the **Work log**
+and **Status** sections whenever something changes, and keep claims tied to numbers or files.
 
 ---
 
@@ -14,14 +21,16 @@ numbers or files.
 
 | Item | State |
 |---|---|
+| Diana 7 URDF with OBJ meshes (Drake-loadable) | Done: `diana7_drake/models/diana7/` (Emre). Checked 2026-11-21: loads in Drake 1.57, 7 positions, 11 bodies |
+| Diana 7 viewing + hold-pose simulation | Scripts exist (`diana7_drake/scripts/01_view_robot.py`, `02_hold_pose.py`); **not re-run since the import**, see section 9 |
+| Grasping / unscrewing, connecting the perception output to the robot | **Not started** |
 | Capture of 3 views of the drill with the L515 | Done: `scans/drillA.npz`, `drillB.npz`, `drillC.npz` |
 | Camera pose calibration from a chessboard | Done: `point_cloud_code/poses.json` (board 7x6 inner corners, 25 mm squares) |
 | Fusion (plane alignment + ICP, FGR fallback) | Done: `point_cloud_code/output/fused.ply` |
 | Table removal (RANSAC) + object isolation (DBSCAN) | Done: `point_cloud_code/output/target_cluster.ply` |
 | Object size compared against a ruler | **Not done yet** |
-| Use of the cloud in Drake (grasp / unscrewing) | **Not started in this repo** |
 
-## 2. The canonical files (use these, ignore anything else)
+## 2. The canonical perception files (use these, ignore anything else)
 
 | File | What it is |
 |---|---|
@@ -105,10 +114,43 @@ From `target_cluster.ply` (computed from the file):
 | Date | Who | What | Evidence |
 |---|---|---|---|
 | 2026-10-30 | Toghrul | Captured drill scans A/B/C, calibrated poses, fused and segmented the drill | `scans/drill*.npz`, `poses.json`, `output/*.ply` |
-| 2026-11-21 | Toghrul | Uploaded the canonical files to this repo and wrote this tracking README | this commit |
+| 2026-11-11 / 11-12 | Emre | Created the Diana 7 Drake repo: URDF converted from the vendor xacro, STL meshes converted to OBJ, view and hold-pose scripts | `diana7_drake/` (his commits `1711ddb`, `0b8eed1`) |
+| 2026-11-21 | Toghrul | Uploaded the canonical perception files to this repo and wrote this tracking README | `022561c` |
+| 2026-11-21 | Toghrul | Imported Emre's `diana7-drake` repo into `diana7_drake/` (git subtree) and extended this README; loaded the URDF headless in Drake as a check | `fdc96eb` and the commit after it |
 
 ## 8. Suggested next steps
+
+0. Emre: confirm the joint-4 pose issue in section 9 and re-run both scripts from this repo.
 
 1. Measure the drill with a ruler and compare with the 0.070 x 0.089 x 0.256 m box.
 2. Re-run fusion with the saved console log and record the ICP fitness/RMSE per view.
 3. Decide how the cloud becomes a Drake model (mesh / primitive fit) for the unscrewing simulation.
+
+## 9. Diana 7 model (`diana7_drake/`)
+
+Files (from Emre's repo, unchanged by the import):
+
+| File | What it is |
+|---|---|
+| `diana7_drake/models/diana7/diana7.urdf` | Diana 7 arm, generated from the vendor xacro (`diana_description`). Root link `base`, joints `diana7_joint1..7`. It has no `<transmission>` tags, so the scripts add the actuators themselves |
+| `diana7_drake/models/diana7/meshes/robots/diana7/{visual,collision}/link0..7.obj` | Meshes converted from STL to OBJ because Drake cannot load STL. The URDF refers to them by relative path, so the folder can be moved as a whole |
+| `diana7_drake/scripts/convert_stl_to_obj.py` | One-time STL to OBJ conversion (needs `trimesh` and the vendor `diana_description` folder, which is **not** in this repo) |
+| `diana7_drake/scripts/01_view_robot.py` | Builds the plant, prints joint and effort limits, shows the arm in Meshcat, simulates 5 s with zero torque |
+| `diana7_drake/scripts/02_hold_pose.py` | Adds an `InverseDynamicsController` (kp 100, critical damping) and holds a pose; prints `max |q - q_des|` after 4 s |
+
+Checked on 2026-11-21 (headless, `MultibodyPlant`, Drake 1.57 from `thesis/venv`): the URDF loads from its new
+location, 7 positions, 11 bodies. Joint limits read from the URDF (rad): joints 1, 3, 5, 6, 7 are +-3.12; joint 2
+is +-1.57; **joint 4 is [0, 3.05]**. Drake prints warnings that `safety_controller` tags are ignored and that
+non-zero joint friction is unsupported; the friction values are therefore **not** simulated.
+
+Open points:
+- **Joint 4 vs the test pose.** Both scripts use `q = [0, 0.5, 0, -1.0, 0, 0.5, 0]`, but joint 4 only allows
+  0 to 3.05 rad, so -1.0 is outside its limit. Check whether the sign of the pose or of the URDF limit is wrong
+  before trusting the "hold pose" result.
+- **Default paths.** `01_view_robot.py` defaults to `~/robots/diana7.urdf` (the old location), and
+  `02_hold_pose.py` to `~/diana7-drake/models/diana7/diana7.urdf`. In this repo pass the path explicitly:
+  `python diana7_drake/scripts/02_hold_pose.py diana7_drake/models/diana7/diana7.urdf`.
+- The scripts were written by Emre and have **not** been run again after the import, so their output is not
+  verified here. Meshcat can only be judged by a human in a browser.
+- The Diana 7 model files come from the robot vendor's `diana_description` package. Check its licence before
+  making this repo public or sharing it outside the thesis.
