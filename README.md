@@ -1,10 +1,11 @@
 # Master_Thesis
 
-Master thesis on **robotic unscrewing of e-waste** (simulation in Drake). The repo has three parts:
+Master thesis on **robotic unscrewing of e-waste** (simulation in Drake). The repo has four parts:
 
 | Folder | Part | Owner |
 |---|---|---|
 | `point_cloud_code/`, `scans/` | **Perception**: one clean 3D point cloud of an object (a drill) from three views of a single Intel RealSense L515, classic geometry only (numpy, Open3D, OpenCV; no learning-based methods) | Toghrul |
+| `hard_disk/` | **Earlier test: point cloud of a hard disk drive** from 4 views of the fixed L515 (object turned 90 deg between views), `box_merged.ply` + the two scripts that made it (October 2026) | Toghrul |
 | `aruco_cubes_tool/` | **Printable ArUco cubes** (PDF nets, geometry YAML, virtual print-and-fold test): the world reference for the camera, replaces the chessboard | Toghrul |
 | `diana7_drake/` | **Robot model and control in Drake**: Diana 7 arm (URDF + meshes) and first simulation scripts | Emre |
 
@@ -22,6 +23,7 @@ and **Status** sections whenever something changes, and keep claims tied to numb
 
 | Item | State |
 |---|---|
+| Hard disk point cloud (Oct 2026) | Done: `hard_disk/scans/box_merged.ply`, 4,494 points. Raw scans not uploaded. Size 15.6 x 11.3 x 3.1 cm, **drive not measured** |
 | Diana 7 URDF with OBJ meshes (Drake-loadable) | Done: `diana7_drake/models/diana7/` (Emre). Checked 2026-11-21: loads in Drake 1.57, 7 positions, 11 bodies |
 | Diana 7 viewing + hold-pose simulation | Scripts exist (`diana7_drake/scripts/01_view_robot.py`, `02_hold_pose.py`); **not re-run since the import**, see section 9 |
 | ArUco cubes (4 cubes, 60 mm, 45 mm markers, `DICT_5X5_100`) | Done: `aruco_cubes_tool/aruco_cubes/` (PDFs + `cube_layout_nominal.yaml`). 14 generator checks and 53 virtual print-and-fold checks pass (see `aruco_cubes_tool/README.md`). Cubes 1 and 2 were printed and used on 2026-11-21; **print scale (100 mm bar) not measured, so marker size is still nominal** |
@@ -56,6 +58,15 @@ python fuse_and_segment.py --views ../scans/drillA.npz ../scans/drillB.npz ../sc
 
 Old test scans (box, earlier view*/drill* retakes), failed-detection images and earlier pose backups were
 deliberately **not** uploaded; they are not valid inputs for the current results.
+
+### 2c. Hard disk (`hard_disk/`, see its README)
+
+| File | What it is |
+|---|---|
+| `hard_disk/scans/box_merged.ply` | The hard disk point cloud, 4,494 points with colours (4 views merged by ICP, 2026-10-21) |
+| `hard_disk/process_views.py`, `process_box.py` | The scripts that produced it (4-view ICP version and the first single-view version) |
+
+The raw scans `box/view_00..03.npz` and `box_view0.npz` are **not uploaded** (they show the lab and a person's arm).
 
 ### 2b. ArUco-cube pipeline (egg carton)
 
@@ -178,6 +189,8 @@ Chessboard pipeline (drill):
 | 2026-10-30 | Toghrul | Captured drill scans A/B/C, calibrated poses, fused and segmented the drill | `scans/drill*.npz`, `poses.json`, `output/*.ply` |
 | 2026-11-11 / 11-12 | Emre | Created the Diana 7 Drake repo: URDF converted from the vendor xacro, STL meshes converted to OBJ, view and hold-pose scripts | `diana7_drake/` (his commits `1711ddb`, `0b8eed1`) |
 | 2026-11-21 | Toghrul | Uploaded the canonical perception files to this repo and wrote this tracking README | `022561c` |
+| 2026-10-16 / 10-21 | Toghrul | Captured a hard disk drive (`box_view0.npz`, `box/view_00..03.npz`), wrote `process_box.py` and `process_views.py`, merged 4 views into `box_merged.ply` | `hard_disk/` |
+| 2026-11-23 | Toghrul | Found the hard disk files on the machine and added them to this repo (`hard_disk/`) | this commit |
 | 2026-11-21 | Toghrul | ArUco cube generator (`aruco_cubes_tool/`): 4 cubes as PDFs, geometry YAML, 14 generation checks; virtual print-and-fold test (53 checks) found and fixed overlapping glue tabs | `aruco_cubes_tool/README.md` |
 | 2026-11-21 | Toghrul | `gather_cloud_aruco.py` + synthetic self test: cube poses, camera poses (remembered in `aruco_poses.json`), fused object cloud, Meshcat viewer `view_aruco_result.py` | `point_cloud_code/README.md` (ArUco cube mode) |
 | 2026-11-21 | Toghrul | First real run: 10 views of an egg carton between cubes 1 and 2. Found that the script assumed cubes 0 and 1 (fixed: world = first cube found), that the single-view cube-to-cube estimate was 29 mm off (fixed: bundle adjustment over all views), that the world frame came from a hidden cube face (fixed: floor frame from the visible top faces, z from marker to camera) | `output/aruco/` |

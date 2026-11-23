@@ -9,3 +9,5 @@ point_cloud_code/output/aruco/aruco_view*.png
 point_cloud_code/output/aruco/scene_cloud.ply
 point_cloud_code/output/aruco_real/
 scans/a[0-9]*.npz
+hard_disk/scans/box/
+hard_disk/scans/box_view0.npz
